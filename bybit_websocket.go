@@ -34,7 +34,7 @@ func (b *WebSocket) handleIncomingMessages() {
 }
 
 func (b *WebSocket) monitorConnection() {
-	ticker := time.NewTicker(time.Second * 5) // Check every 5 seconds
+	ticker := time.NewTicker(b.monitorConnectionInterval) // Check every 5 seconds
 	defer ticker.Stop()
 
 	for {
@@ -63,16 +63,18 @@ func (b *WebSocket) SetMessageHandler(handler MessageHandler) {
 }
 
 type WebSocket struct {
-	conn         *websocket.Conn
-	url          string
-	apiKey       string
-	apiSecret    string
-	maxAliveTime string
-	pingInterval int
-	onMessage    MessageHandler
-	ctx          context.Context
-	cancel       context.CancelFunc
-	isConnected  bool
+	conn                      *websocket.Conn
+	url                       string
+	apiKey                    string
+	apiSecret                 string
+	maxAliveTime              string
+	pingInterval              int
+	onMessage                 MessageHandler
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	isConnected               bool
+	monitorConnectionInterval time.Duration
+	onConnect                 func()
 }
 
 type WebsocketOption func(*WebSocket)
@@ -89,14 +91,16 @@ func WithMaxAliveTime(maxAliveTime string) WebsocketOption {
 	}
 }
 
-func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHandler, options ...WebsocketOption) *WebSocket {
+func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHandler, onConnect func(), monitorConnectionInterval time.Duration, options ...WebsocketOption) *WebSocket {
 	c := &WebSocket{
-		url:          url,
-		apiKey:       apiKey,
-		apiSecret:    apiSecret,
-		maxAliveTime: "",
-		pingInterval: 20,
-		onMessage:    handler,
+		url:                       url,
+		apiKey:                    apiKey,
+		apiSecret:                 apiSecret,
+		maxAliveTime:              "",
+		pingInterval:              20,
+		onMessage:                 handler,
+		monitorConnectionInterval: monitorConnectionInterval,
+		onConnect:                 onConnect,
 	}
 
 	// Apply the provided options
@@ -107,11 +111,13 @@ func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHand
 	return c
 }
 
-func NewBybitPublicWebSocket(url string, handler MessageHandler) *WebSocket {
+func NewBybitPublicWebSocket(url string, handler MessageHandler, onConnect func(), monitorConnectionInterval time.Duration) *WebSocket {
 	c := &WebSocket{
-		url:          url,
-		pingInterval: 20, // default is 20 seconds
-		onMessage:    handler,
+		url:                       url,
+		pingInterval:              20, // default is 20 seconds
+		onMessage:                 handler,
+		monitorConnectionInterval: monitorConnectionInterval,
+		onConnect:                 onConnect,
 	}
 
 	return c
@@ -133,6 +139,7 @@ func (b *WebSocket) Connect() *WebSocket {
 	}
 	b.isConnected = true
 
+	go b.onConnect()
 	go b.handleIncomingMessages()
 	go b.monitorConnection()
 
