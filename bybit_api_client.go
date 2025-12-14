@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/bybit-exchange/bybit.go.api/models"
+	"github.com/fqds/bybit-go-api-mf/models"
 	"io"
 	"log"
 	"net/http"
@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/bybit-exchange/bybit.go.api/handlers"
+	"github.com/fqds/bybit-go-api-mf/handlers"
 	jsoniter "github.com/json-iterator/go"
 )
 

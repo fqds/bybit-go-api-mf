@@ -1,4 +1,4 @@
-module github.com/bybit-exchange/bybit.go.api
+module github.com/fqds/bybit-go-api-mf
 
 go 1.21
 
