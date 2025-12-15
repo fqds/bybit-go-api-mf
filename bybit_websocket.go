@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,7 @@ func (b *WebSocket) handleIncomingMessages() {
 	for {
 		_, message, err := b.conn.ReadMessage()
 		if err != nil {
-			fmt.Println("Error reading:", err)
+			log.Println("Error reading:", err)
 			b.isConnected = false
 			return
 		}
@@ -26,7 +27,7 @@ func (b *WebSocket) handleIncomingMessages() {
 		if b.onMessage != nil {
 			err := b.onMessage(string(message))
 			if err != nil {
-				fmt.Println("Error handling message:", err)
+				log.Println("Error handling message:", err)
 				return
 			}
 		}
@@ -40,13 +41,10 @@ func (b *WebSocket) monitorConnection() {
 	for {
 		<-ticker.C
 		if !b.isConnected && b.ctx.Err() == nil { // Check if disconnected and context not done
-			fmt.Println("Attempting to reconnect...")
-			con := b.Connect() // Example, adjust parameters as needed
-			if con == nil {
-				fmt.Println("Reconnection failed:")
-			} else {
-				b.isConnected = true
-				go b.handleIncomingMessages() // Restart message handling
+			log.Println("Attempting to reconnect...")
+			err := b.Connect() // Example, adjust parameters as needed
+			if err != nil {
+				log.Println("Reconnection failed:", err)
 			}
 		}
 
@@ -123,18 +121,22 @@ func NewBybitPublicWebSocket(url string, handler MessageHandler, onConnect func(
 	return c
 }
 
-func (b *WebSocket) Connect() *WebSocket {
+func (b *WebSocket) Connect() error {
 	var err error
 	wssUrl := b.url
 	if b.maxAliveTime != "" {
 		wssUrl += "?max_alive_time=" + b.maxAliveTime
 	}
 	b.conn, _, err = websocket.DefaultDialer.Dial(wssUrl, nil)
+	if err != nil {
+		log.Println("Failed to connect to WebSocket:", err)
+		return err
+	}
 
 	if b.requiresAuthentication() {
 		if err = b.sendAuth(); err != nil {
-			fmt.Println("Failed Connection:", fmt.Sprintf("%v", err))
-			return nil
+			log.Println("Failed ws auth:", fmt.Sprintf("%v", err))
+			return err
 		}
 	}
 	b.isConnected = true
@@ -146,7 +148,7 @@ func (b *WebSocket) Connect() *WebSocket {
 	b.ctx, b.cancel = context.WithCancel(context.Background())
 	go ping(b)
 
-	return b
+	return nil
 }
 
 func (b *WebSocket) SendSubscription(args []string) (*WebSocket, error) {
@@ -156,12 +158,12 @@ func (b *WebSocket) SendSubscription(args []string) (*WebSocket, error) {
 		"op":     "subscribe",
 		"args":   args,
 	}
-	fmt.Println("subscribe msg:", fmt.Sprintf("%v", subMessage["args"]))
+	log.Println("subscribe msg:", fmt.Sprintf("%v", subMessage["args"]))
 	if err := b.sendAsJson(subMessage); err != nil {
-		fmt.Println("Failed to send subscription:", err)
+		log.Println("Failed to send subscription:", err)
 		return b, err
 	}
-	fmt.Println("Subscription sent successfully.")
+	log.Println("Subscription sent successfully.")
 	return b, nil
 }
 
