@@ -13,22 +13,37 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type MessageHandler func(message string) error
+type MessageHandler func(message map[string]any) error
 
 func (b *WebSocket) handleIncomingMessages() {
 	for {
+		if !b.isConnected {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
 		_, message, err := b.conn.ReadMessage()
 		if err != nil {
 			log.Println("Error reading:", err)
 			b.isConnected = false
-			return
+			continue
 		}
 
 		if b.onMessage != nil {
-			err := b.onMessage(string(message))
+			messageData := map[string]any{}
+			if err := json.Unmarshal(message, &messageData); err != nil {
+				messageData = map[string]any{"btMsg": message}
+			} else {
+				if messageData["op"] == "pong" {
+					b.isWaitingForPing = false
+					continue
+				}
+			}
+
+			err := b.onMessage(messageData)
 			if err != nil {
 				log.Println("Error handling message:", err)
-				return
+				continue
 			}
 		}
 	}
@@ -71,6 +86,8 @@ type WebSocket struct {
 	ctx                       context.Context
 	cancel                    context.CancelFunc
 	isConnected               bool
+	isInitialized             bool
+	isWaitingForPing          bool
 	monitorConnectionInterval time.Duration
 	onConnect                 func()
 }
@@ -89,7 +106,19 @@ func WithMaxAliveTime(maxAliveTime string) WebsocketOption {
 	}
 }
 
-func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHandler, onConnect func(), monitorConnectionInterval time.Duration, options ...WebsocketOption) *WebSocket {
+func WithOnConnect(onConnect func()) WebsocketOption {
+	return func(c *WebSocket) {
+		c.onConnect = onConnect
+	}
+}
+
+func WithMonitorConnectionInterval(monitorConnectionInterval time.Duration) WebsocketOption {
+	return func(c *WebSocket) {
+		c.monitorConnectionInterval = monitorConnectionInterval
+	}
+}
+
+func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHandler, options ...WebsocketOption) *WebSocket {
 	c := &WebSocket{
 		url:                       url,
 		apiKey:                    apiKey,
@@ -97,8 +126,8 @@ func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHand
 		maxAliveTime:              "",
 		pingInterval:              20,
 		onMessage:                 handler,
-		monitorConnectionInterval: monitorConnectionInterval,
-		onConnect:                 onConnect,
+		monitorConnectionInterval: 100 * time.Millisecond,
+		onConnect:                 func() {},
 	}
 
 	// Apply the provided options
@@ -109,13 +138,13 @@ func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHand
 	return c
 }
 
-func NewBybitPublicWebSocket(url string, handler MessageHandler, onConnect func(), monitorConnectionInterval time.Duration) *WebSocket {
+func NewBybitPublicWebSocket(url string, handler MessageHandler, options ...WebsocketOption) *WebSocket {
 	c := &WebSocket{
 		url:                       url,
 		pingInterval:              20, // default is 20 seconds
 		onMessage:                 handler,
-		monitorConnectionInterval: monitorConnectionInterval,
-		onConnect:                 onConnect,
+		monitorConnectionInterval: 100 * time.Millisecond,
+		onConnect:                 func() {},
 	}
 
 	return c
@@ -140,14 +169,17 @@ func (b *WebSocket) Connect() error {
 		}
 	}
 	b.isConnected = true
+	b.isWaitingForPing = false
+
+	if !b.isInitialized {
+		b.isInitialized = true
+		go b.monitorConnection()
+		go ping(b)
+		go b.handleIncomingMessages()
+		b.ctx, b.cancel = context.WithCancel(context.Background())
+	}
 
 	go b.onConnect()
-	go b.handleIncomingMessages()
-	go b.monitorConnection()
-
-	b.ctx, b.cancel = context.WithCancel(context.Background())
-	go ping(b)
-
 	return nil
 }
 
@@ -215,6 +247,17 @@ func ping(b *WebSocket) {
 	for {
 		select {
 		case <-ticker.C:
+			if b.isWaitingForPing {
+				log.Println("No pong received for the last ping. Marking as disconnected.")
+				b.isConnected = false
+				continue
+			}
+
+			if !b.isConnected {
+				log.Println("WebSocket is not connected. do not send ping.")
+				continue
+			}
+
 			currentTime := time.Now().Unix()
 			pingMessage := map[string]string{
 				"op":     "ping",
@@ -222,15 +265,16 @@ func ping(b *WebSocket) {
 			}
 			jsonPingMessage, err := json.Marshal(pingMessage)
 			if err != nil {
-				fmt.Println("Failed to marshal ping message:", err)
+				log.Println("Failed to marshal ping message:", err)
 				continue
 			}
 			if err := b.conn.WriteMessage(websocket.TextMessage, jsonPingMessage); err != nil {
-				fmt.Println("Failed to send ping:", err)
-				return
+				log.Println("Failed to send ping:", err)
+				b.isConnected = false
+				continue
 			}
-			fmt.Println("Ping sent with UTC time:", currentTime)
 
+			b.isWaitingForPing = true
 		case <-b.ctx.Done():
 			fmt.Println("Ping context closed, stopping ping.")
 			return
