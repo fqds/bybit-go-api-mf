@@ -147,6 +147,11 @@ func NewBybitPublicWebSocket(url string, handler MessageHandler, options ...Webs
 		onConnect:                 func() {},
 	}
 
+	// Apply the provided options
+	for _, opt := range options {
+		opt(c)
+	}
+
 	return c
 }
 
@@ -180,6 +185,7 @@ func (b *WebSocket) Connect() error {
 	}
 
 	go b.onConnect()
+	log.Println("Connected to WebSocket successfully.")
 	return nil
 }
 
