@@ -34,7 +34,7 @@ func (b *WebSocket) handleIncomingMessages() {
 			if err := json.Unmarshal(message, &messageData); err != nil {
 				messageData = map[string]any{"btMsg": message}
 			} else {
-				if messageData["op"] == "pong" {
+				if messageData["op"] == "pong" || messageData["ret_msg"] == "pong" {
 					b.isWaitingForPing = false
 					continue
 				}
@@ -81,7 +81,7 @@ type WebSocket struct {
 	apiKey                    string
 	apiSecret                 string
 	maxAliveTime              string
-	pingInterval              int
+	pingInterval              time.Duration
 	onMessage                 MessageHandler
 	ctx                       context.Context
 	cancel                    context.CancelFunc
@@ -94,7 +94,7 @@ type WebSocket struct {
 
 type WebsocketOption func(*WebSocket)
 
-func WithPingInterval(pingInterval int) WebsocketOption {
+func WithPingInterval(pingInterval time.Duration) WebsocketOption {
 	return func(c *WebSocket) {
 		c.pingInterval = pingInterval
 	}
@@ -124,7 +124,7 @@ func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHand
 		apiKey:                    apiKey,
 		apiSecret:                 apiSecret,
 		maxAliveTime:              "",
-		pingInterval:              20,
+		pingInterval:              time.Second * 20,
 		onMessage:                 handler,
 		monitorConnectionInterval: 100 * time.Millisecond,
 		onConnect:                 func() {},
@@ -141,7 +141,7 @@ func NewBybitPrivateWebSocket(url, apiKey, apiSecret string, handler MessageHand
 func NewBybitPublicWebSocket(url string, handler MessageHandler, options ...WebsocketOption) *WebSocket {
 	c := &WebSocket{
 		url:                       url,
-		pingInterval:              20, // default is 20 seconds
+		pingInterval:              time.Second * 20,
 		onMessage:                 handler,
 		monitorConnectionInterval: 100 * time.Millisecond,
 		onConnect:                 func() {},
@@ -241,20 +241,20 @@ func ping(b *WebSocket) {
 		return
 	}
 
-	ticker := time.NewTicker(time.Duration(b.pingInterval) * time.Second)
+	ticker := time.NewTicker(b.pingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if b.isWaitingForPing {
-				log.Println("No pong received for the last ping. Marking as disconnected.")
-				b.isConnected = false
+			if !b.isConnected {
+				log.Println("WebSocket is not connected. do not send ping.")
 				continue
 			}
 
-			if !b.isConnected {
-				log.Println("WebSocket is not connected. do not send ping.")
+			if b.isWaitingForPing {
+				log.Println("No pong received for the last ping. Marking as disconnected.")
+				b.isConnected = false
 				continue
 			}
 
