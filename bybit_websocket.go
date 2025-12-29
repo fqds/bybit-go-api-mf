@@ -219,26 +219,18 @@ func (b *WebSocket) SendRequest(op string, args map[string]interface{}, headers 
 		"op":     op,
 		"args":   []interface{}{args},
 	}
-	fmt.Println("request headers:", fmt.Sprintf("%v", request["header"]))
-	fmt.Println("request op channel:", fmt.Sprintf("%v", request["op"]))
-	fmt.Println("request msg:", fmt.Sprintf("%v", request["args"]))
 	if err := b.sendAsJson(request); err != nil {
 		fmt.Println("Failed to send websocket trade request:", err)
 		return b, err
 	}
-	fmt.Println("Successfully sent websocket trade request.")
 	return b, nil
 }
 
 func (b *WebSocket) SendTradeRequest(tradeTruest map[string]interface{}) (*WebSocket, error) {
-	fmt.Println("trade request headers:", fmt.Sprintf("%v", tradeTruest["header"]))
-	fmt.Println("trade request op channel:", fmt.Sprintf("%v", tradeTruest["op"]))
-	fmt.Println("trade request msg:", fmt.Sprintf("%v", tradeTruest["args"]))
 	if err := b.sendAsJson(tradeTruest); err != nil {
 		fmt.Println("Failed to send websocket trade request:", err)
 		return b, err
 	}
-	fmt.Println("Successfully sent websocket trade request.")
 	return b, nil
 }
 
@@ -317,14 +309,12 @@ func (b *WebSocket) sendAuth() error {
 
 	// Convert to hexadecimal instead of base64
 	signature := hex.EncodeToString(h.Sum(nil))
-	fmt.Println("signature generated : " + signature)
 
 	authMessage := map[string]interface{}{
 		"req_id": uuid.New(),
 		"op":     "auth",
 		"args":   []interface{}{b.apiKey, expires, signature},
 	}
-	fmt.Println("auth args:", fmt.Sprintf("%v", authMessage["args"]))
 	return b.sendAsJson(authMessage)
 }
 
