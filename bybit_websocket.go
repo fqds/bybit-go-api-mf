@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,6 +91,7 @@ type WebSocket struct {
 	isWaitingForPing          bool
 	monitorConnectionInterval time.Duration
 	onConnect                 func()
+	sendMutex                 sync.Mutex
 }
 
 type WebsocketOption func(*WebSocket)
@@ -327,5 +329,8 @@ func (b *WebSocket) sendAsJson(v interface{}) error {
 }
 
 func (b *WebSocket) send(message string) error {
+	b.sendMutex.Lock()
+	defer b.sendMutex.Unlock()
+
 	return b.conn.WriteMessage(websocket.TextMessage, []byte(message))
 }
